@@ -1,0 +1,79 @@
+cabal-version:      2.4
+name:               haskellgame
+version:            0.1.0.0
+
+-- A short (one-line) description of the package.
+-- synopsis:
+
+-- A longer description of the package.
+-- description:
+
+-- A URL where users can report bugs.
+-- bug-reports:
+
+-- The license under which the package is released.
+-- license:
+author:             Marijan Petričević
+maintainer:         marijan.petricevic94@gmail.com
+
+-- A copyright notice.
+-- copyright:
+-- category:
+extra-source-files: CHANGELOG.md
+
+executable haskellgame-cli
+    ghc-options: -Wall -Werror
+    main-is:          Main.hs
+    -- Modules included in this executable, other than Main.
+    other-modules:
+    -- LANGUAGE extensions used by modules in this package.
+    -- other-extensions:
+    build-depends:    
+        base
+      , dear-imgui
+      , GLFW-b
+      , gl
+      , gloss
+      , gloss-rendering
+      , managed
+      , reactive-banana
+      , sdl2
+      , unliftio
+    hs-source-dirs:   app
+    default-language: Haskell2010
+
+library
+    ghc-options: -Wall -Werror
+    exposed-modules:
+
+    -- Modules included in this library but not exported.
+    -- other-modules:
+
+    -- LANGUAGE extensions used by modules in this package.
+    -- other-extensions:
+    build-depends:
+        base ^>=4.14.3.0
+      , checkers
+      , hspec
+      , QuickCheck
+    hs-source-dirs:   src
+    default-language: Haskell2010
+
+test-suite haskellgame-test
+  ghc-options: -Wall -Werror
+  type:             exitcode-stdio-1.0
+  hs-source-dirs:   test
+  main-is:          Main.hs
+  other-modules:
+    MonoidSpec
+    FunctorSpec
+
+  default-language: Haskell2010
+  build-depends:
+    , base
+    , checkers
+    , genvalidity-hspec
+    , hspec
+    , hspec-checkers
+    , QuickCheck
+    , haskellgame

@@ -1,0 +1,8 @@
+packages:
+  haskellgame
+
+constraints:
+  zlib +pkg-config
+
+package dear-imgui
+  flags: +glfw +opengl3
