@@ -1,6 +1,7 @@
 {-# language BlockArguments #-}
 {-# language LambdaCase #-}
 {-# language OverloadedStrings #-}
+{-# LANGUAGE RecursiveDo #-}
 module Main ( main ) where
 
 import Control.Monad
@@ -10,9 +11,20 @@ import DearImGui
 import DearImGui.OpenGL3
 import DearImGui.GLFW
 import DearImGui.GLFW.OpenGL
-import Graphics.GL
-import Graphics.UI.GLFW (Window)
+-- import Graphics.GL
+import Graphics.UI.GLFW (Window, Key(..), KeyState(..))
 import qualified Graphics.UI.GLFW as GLFW
+
+import Graphics.Gloss.Rendering (displayPicture, Point)
+import Graphics.Gloss.Data.Color (red, blue)
+import Graphics.Gloss.Data.Picture (rectangleSolid, color, translate)
+import qualified Graphics.Gloss.Rendering as GlossR
+
+import Control.Event.Handler (AddHandler, newAddHandler)
+import Reactive.Banana (compile)
+import Reactive.Banana.Frameworks (EventNetwork, actuate, reactimate', fromAddHandler, changes)
+import Reactive.Banana.Combinators (accumB)
+
 import UnliftIO.Exception (bracket, bracket_)
 
 main :: IO ()
@@ -42,40 +54,100 @@ main = do
         -- Initialize ImGui's OpenGL backend
         _ <- managed_ $ bracket_ openGL3Init openGL3Shutdown
 
-        liftIO $ mainLoop window
+        glossState <- liftIO $ GlossR.initState
+
+        source <- liftIO $ newAddHandler
+
+        network <- liftIO $ setupNetwork window glossState source
+        liftIO $ actuate network
+
+        liftIO $ mainLoop window source
 
   GLFW.terminate
 
-mainLoop :: Window -> IO ()
-mainLoop window = do
+mainLoop :: Window -> EventSource ControlKeys -> IO ()
+mainLoop window controlKeysEventSource = do
   -- Process the event loop
   GLFW.pollEvents
   close <- GLFW.windowShouldClose window
   unless close do
+    fire controlKeysEventSource =<< getControlKeys window
+    esc <- keyIsPressed window Key'Escape
+    if esc
+      then return ()
+      else mainLoop window controlKeysEventSource
 
-    -- Tell ImGui we're starting a new frame
-    openGL3NewFrame
-    glfwNewFrame
-    newFrame
+type EventSource a = (AddHandler a, a -> IO ())
 
-    -- Build the GUI
-    bracket_ (begin "Hello, ImGui!") end do
-      -- Add a text widget
-      text "Hello, ImGui!"
+addHandler :: EventSource a -> AddHandler a
+addHandler = fst
 
-      -- Add a button widget, and call 'putStrLn' when it's clicked
-      clicking <- button "Clickety Click"
-      when clicking $
-        putStrLn "Ow!"
+fire :: EventSource a -> a -> IO ()
+fire = snd
 
-    renderFrame window
+setupNetwork :: Window -> GlossR.State -> EventSource ControlKeys -> IO EventNetwork
+setupNetwork window glossState directionEventSource = compile $ do
+    controlKeyEvent <- fromAddHandler (addHandler directionEventSource)
+    playerMoveB <-  accumB (Player (0, 0)) $ (\controlKey player -> movePlayer 1 controlKey player) <$> controlKeyEvent
+    e <- changes playerMoveB
+    reactimate' $ (fmap . fmap) (renderFrame window glossState) e
 
-    mainLoop window
 
-renderFrame :: Window -> IO ()
-renderFrame window = do
+data Player = Player { _position :: Point } deriving (Show, Eq, Ord)
+
+data ControlKeys = ControlKeys {
+  _up :: Bool,
+  _down :: Bool,
+  _left :: Bool,
+  _right :: Bool
+} deriving (Eq, Ord, Show)
+
+getControlKeys :: Window -> IO ControlKeys
+getControlKeys window = do
+  ControlKeys <$> keyIsPressed window Key'Up
+              <*> keyIsPressed window Key'Down
+              <*> keyIsPressed window Key'Left
+              <*> keyIsPressed window Key'Right
+
+
+movePlayer :: Float -> ControlKeys -> Player -> Player
+movePlayer v (ControlKeys True _ _ _) (Player (xPos, yPos)) = Player (xPos, yPos + v)
+movePlayer v (ControlKeys _ True _ _) (Player (xPos, yPos)) = Player (xPos, yPos - v)
+movePlayer v (ControlKeys _ _ True _) (Player (xPos, yPos)) = Player (xPos - v, yPos)
+movePlayer v (ControlKeys _ _ _ True) (Player (xPos, yPos)) = Player (xPos + v, yPos)
+movePlayer _ _ p = p
+
+renderFrame :: Window -> GlossR.State -> Player -> IO ()
+renderFrame window glossState (Player (xPos, yPos)) = do
+  displayPicture (1000, 800) blue glossState 5.0 $ translate xPos yPos (color red $ rectangleSolid 200 200)
+  renderGUI
   -- Render
-  glClear GL_COLOR_BUFFER_BIT
+  -- glClear GL_COLOR_BUFFER_BIT
   render
   openGL3RenderDrawData =<< getDrawData
   GLFW.swapBuffers window
+
+renderGUI:: IO ()
+renderGUI = do
+  -- Tell ImGui we're starting a new frame
+  openGL3NewFrame
+  glfwNewFrame
+  newFrame
+
+  -- Build the GUI
+  bracket_ (begin "Hello, ImGui!") end do
+    -- Add a text widget
+    text "Hello, ImGui!"
+
+    -- Add a button widget, and call 'putStrLn' when it's clicked
+    clicking <- button "Clickety Click"
+    when clicking $
+      putStrLn "Ow!"
+
+keyIsPressed :: Window -> Key -> IO Bool
+keyIsPressed window key = keyStateIsPressed <$> GLFW.getKey window key
+
+keyStateIsPressed :: KeyState -> Bool
+keyStateIsPressed KeyState'Pressed = True
+keyStateIsPressed KeyState'Repeating = True
+keyStateIsPressed _ = False
