@@ -93,11 +93,13 @@ setupNetwork window glossState controlKeysEventSource = compile $ do
 
 data Player = Player { _position :: Point } deriving (Show, Eq, Ord)
 
+type Pressed = Bool
+
 data ControlKeys = ControlKeys {
-  _up :: Bool,
-  _down :: Bool,
-  _left :: Bool,
-  _right :: Bool
+  _up :: Pressed,
+  _down :: Pressed,
+  _left :: Pressed,
+  _right :: Pressed
 } deriving (Eq, Ord, Show)
 
 getControlKeys :: Window -> IO ControlKeys
@@ -109,7 +111,11 @@ getControlKeys window = do
 
 
 movePlayer :: Float -> ControlKeys -> Player -> Player
+movePlayer v (ControlKeys True _ True _) (Player (xPos, yPos)) = Player (xPos - v, yPos + v)
+movePlayer v (ControlKeys True _ _ True) (Player (xPos, yPos)) = Player (xPos + v, yPos + v)
 movePlayer v (ControlKeys True _ _ _) (Player (xPos, yPos)) = Player (xPos, yPos + v)
+movePlayer v (ControlKeys _ True True _) (Player (xPos, yPos)) = Player (xPos - v, yPos - v)
+movePlayer v (ControlKeys _ True _ True) (Player (xPos, yPos)) = Player (xPos + v, yPos - v)
 movePlayer v (ControlKeys _ True _ _) (Player (xPos, yPos)) = Player (xPos, yPos - v)
 movePlayer v (ControlKeys _ _ True _) (Player (xPos, yPos)) = Player (xPos - v, yPos)
 movePlayer v (ControlKeys _ _ _ True) (Player (xPos, yPos)) = Player (xPos + v, yPos)
