@@ -1,7 +1,6 @@
 {-# language BlockArguments #-}
 {-# language LambdaCase #-}
 {-# language OverloadedStrings #-}
-{-# LANGUAGE RecursiveDo #-}
 module Main ( main ) where
 
 import Control.Monad
@@ -22,8 +21,8 @@ import qualified Graphics.Gloss.Rendering as GlossR
 
 import Control.Event.Handler (AddHandler, newAddHandler)
 import Reactive.Banana (compile)
-import Reactive.Banana.Frameworks (EventNetwork, actuate, reactimate', fromAddHandler, changes)
-import Reactive.Banana.Combinators (accumB)
+import Reactive.Banana.Frameworks (EventNetwork, actuate, reactimate, fromAddHandler)
+import Reactive.Banana.Combinators (accumE)
 
 import UnliftIO.Exception (bracket, bracket_)
 
@@ -86,11 +85,10 @@ fire :: EventSource a -> a -> IO ()
 fire = snd
 
 setupNetwork :: Window -> GlossR.State -> EventSource ControlKeys -> IO EventNetwork
-setupNetwork window glossState directionEventSource = compile $ do
-    controlKeyEvent <- fromAddHandler (addHandler directionEventSource)
-    playerMoveB <-  accumB (Player (0, 0)) $ (\controlKey player -> movePlayer 1 controlKey player) <$> controlKeyEvent
-    e <- changes playerMoveB
-    reactimate' $ (fmap . fmap) (renderFrame window glossState) e
+setupNetwork window glossState controlKeysEventSource = compile $ do
+    controlKeyEvent <- fromAddHandler (addHandler controlKeysEventSource)
+    playerMoveEvent <-  accumE (Player (0, 0)) $ (\controlKey player -> movePlayer 8 controlKey player) <$> controlKeyEvent
+    reactimate $ (renderFrame window glossState) <$> playerMoveEvent
 
 
 data Player = Player { _position :: Point } deriving (Show, Eq, Ord)
