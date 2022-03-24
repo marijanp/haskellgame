@@ -55,12 +55,12 @@ main = do
 
         glossState <- liftIO $ GlossR.initState
 
-        source <- liftIO $ newAddHandler
+        controlKeysEventSource <- liftIO $ newAddHandler
 
-        network <- liftIO $ setupNetwork window glossState source
+        network <- liftIO $ setupNetwork window glossState controlKeysEventSource
         liftIO $ actuate network
 
-        liftIO $ mainLoop window source
+        liftIO $ mainLoop window controlKeysEventSource
 
   GLFW.terminate
 
