@@ -14,7 +14,7 @@ import DearImGui.GLFW.OpenGL
 import Graphics.UI.GLFW (Window, Key(..), KeyState(..))
 import qualified Graphics.UI.GLFW as GLFW
 
-import Graphics.Gloss.Rendering (displayPicture, Point)
+import Graphics.Gloss.Rendering (displayPicture)
 import Graphics.Gloss.Data.Color (red, blue)
 import Graphics.Gloss.Data.Picture (rectangleSolid, color, translate)
 import qualified Graphics.Gloss.Rendering as GlossR
@@ -25,6 +25,11 @@ import Reactive.Banana.Frameworks (EventNetwork, actuate, reactimate, fromAddHan
 import Reactive.Banana.Combinators (accumE)
 
 import UnliftIO.Exception (bracket, bracket_)
+
+import Linear.V2
+
+import Game.Player
+import Game.ControlKeys
 
 main :: IO ()
 main = do
@@ -87,20 +92,8 @@ fire = snd
 setupNetwork :: Window -> GlossR.State -> EventSource ControlKeys -> IO EventNetwork
 setupNetwork window glossState controlKeysEventSource = compile $ do
     controlKeyEvent <- fromAddHandler (addHandler controlKeysEventSource)
-    playerMoveEvent <-  accumE (Player (0, 0)) $ (\controlKey player -> movePlayer 8 controlKey player) <$> controlKeyEvent
+    playerMoveEvent <-  accumE (Player (V2 0 0)) $ (\controlKey player -> movePlayer 8 controlKey player) <$> controlKeyEvent
     reactimate $ (renderFrame window glossState) <$> playerMoveEvent
-
-
-data Player = Player { _position :: Point } deriving (Show, Eq, Ord)
-
-type Pressed = Bool
-
-data ControlKeys = ControlKeys {
-  _up :: Pressed,
-  _down :: Pressed,
-  _left :: Pressed,
-  _right :: Pressed
-} deriving (Eq, Ord, Show)
 
 getControlKeys :: Window -> IO ControlKeys
 getControlKeys window = do
@@ -110,19 +103,8 @@ getControlKeys window = do
               <*> keyIsPressed window Key'Right
 
 
-movePlayer :: Float -> ControlKeys -> Player -> Player
-movePlayer v (ControlKeys True _ True _) (Player (xPos, yPos)) = Player (xPos - v, yPos + v)
-movePlayer v (ControlKeys True _ _ True) (Player (xPos, yPos)) = Player (xPos + v, yPos + v)
-movePlayer v (ControlKeys True _ _ _) (Player (xPos, yPos)) = Player (xPos, yPos + v)
-movePlayer v (ControlKeys _ True True _) (Player (xPos, yPos)) = Player (xPos - v, yPos - v)
-movePlayer v (ControlKeys _ True _ True) (Player (xPos, yPos)) = Player (xPos + v, yPos - v)
-movePlayer v (ControlKeys _ True _ _) (Player (xPos, yPos)) = Player (xPos, yPos - v)
-movePlayer v (ControlKeys _ _ True _) (Player (xPos, yPos)) = Player (xPos - v, yPos)
-movePlayer v (ControlKeys _ _ _ True) (Player (xPos, yPos)) = Player (xPos + v, yPos)
-movePlayer _ _ p = p
-
 renderFrame :: Window -> GlossR.State -> Player -> IO ()
-renderFrame window glossState (Player (xPos, yPos)) = do
+renderFrame window glossState (Player (V2 xPos yPos)) = do
   displayPicture (1000, 800) blue glossState 5.0 $ translate xPos yPos (color red $ rectangleSolid 200 200)
   renderGUI
   -- Render
