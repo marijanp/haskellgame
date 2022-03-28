@@ -26,6 +26,8 @@ executable haskellgame-cli
     main-is:          Main.hs
     -- Modules included in this executable, other than Main.
     other-modules:
+        EventSource
+        GameLoop
         Graphics.Textures
     -- LANGUAGE extensions used by modules in this package.
     -- other-extensions:
@@ -35,11 +37,13 @@ executable haskellgame-cli
       , clock
       , dear-imgui
       , GLFW-b
+      , group-theory
       , gl
       , gloss
       , gloss-rendering
       , haskellgame
       , linear
+      , mtl
       , managed
       , random
       , reactive-banana
@@ -53,8 +57,7 @@ library
     exposed-modules:
         Game.ControlKeys
         Game.Direction
-        Game.Player
-        Game.Monster
+        Game.Character
 
     -- Modules included in this library but not exported.
     -- other-modules:

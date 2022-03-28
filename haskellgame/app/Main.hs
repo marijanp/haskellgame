@@ -23,24 +23,24 @@ import qualified Graphics.Gloss.Rendering as GlossR
 import Control.Event.Handler (AddHandler, newAddHandler)
 import Reactive.Banana (compile)
 import Reactive.Banana.Frameworks (EventNetwork, actuate, reactimate, fromAddHandler)
-import Reactive.Banana.Combinators (Event, Behavior, accumE, accumB, mapAccum, (<@>), (<@), stepper)
+import Reactive.Banana.Combinators (Event, Behavior, accumE, accumB, mapAccum, (<@>), (<@), stepper, unionWith)
 
 import Data.Map ((!))
 import qualified Data.Map as M
 
 
 import UnliftIO.Exception (bracket, bracket_)
-import Control.Monad.State (StateT)
-import Control.Monad.Reader (ReaderT)
 
 import Linear.V2
 import System.Clock
 import System.Random (initStdGen, uniform, StdGen)
 
 import Graphics.Textures
+import EventSource
 
-import Game.Player
-import Game.Monster (Monster(..), MonsterStatus(..), wander)
+import GameLoop
+
+import Game.Character
 import Game.ControlKeys
 import Game.Direction
 
@@ -67,9 +67,18 @@ main = do
         idleLeftTextures <- liftIO $ traverse loadBMP $ take 10 $ (\i -> "haskellgame/images/soldier/idle/left/" ++ show i ++ ".bmp") <$> [0..]
         runningLeftTextures <- liftIO $ traverse loadBMP $ take 10 $ (\i -> "haskellgame/images/soldier/running/left/" ++ show i ++ ".bmp") <$> [0..]
 
+        wolfRunningLeftTextures <- liftIO $ traverse loadBMP $ take 8 $ (\i -> "haskellgame/images/wolf/running/left/" ++ show i ++ ".bmp") <$> [0..]
+        wolfRunningRightTextures <- liftIO $ traverse loadBMP $ take 8 $ (\i -> "haskellgame/images/wolf/running/right/" ++ show i ++ ".bmp") <$> [0..]
+
         let playerTextureMap = M.fromList [ (RightDirection, M.fromList [(Idle, idleRightTextures), (Running, runningRightTextures)]),
                                             (LeftDirection, M.fromList [(Idle, idleLeftTextures), (Running, runningLeftTextures)])
                                           ]
+            wolfTextureMap = M.fromList [ (RightDirection, M.fromList [(Running, wolfRunningRightTextures)]),
+                                          (LeftDirection, M.fromList [(Running, wolfRunningLeftTextures)]),
+                                          (UpDirection, M.fromList [(Running, wolfRunningRightTextures)]),
+                                          (DownDirection, M.fromList [(Running, wolfRunningLeftTextures)])
+                                        ]
+            characterTextureMap = M.fromList [(Soldier, playerTextureMap), (Wolf, wolfTextureMap)]
 
         -- Create an ImGui context
         _ <- managed $ bracket createContext destroyContext
@@ -87,69 +96,46 @@ main = do
         controlKeysEventSource <- liftIO $ newAddHandler
         timeOutEventSource <- liftIO $ newAddHandler
 
-        network <- liftIO $ setupNetwork window glossState renderFrameEventSource animationTimeOutEventSource controlKeysEventSource timeOutEventSource playerTextureMap
+        network <- liftIO $ setupNetwork window glossState renderFrameEventSource animationTimeOutEventSource controlKeysEventSource timeOutEventSource characterTextureMap
         liftIO $ actuate network
 
         initialTime <- liftIO $ getTime Monotonic
 
-        liftIO $ mainLoop initialTime window renderFrameEventSource animationTimeOutEventSource controlKeysEventSource timeOutEventSource
+        let periodicEvents = [
+              (PeriodicEvent initialTime (TimeSpec 0 2000000) renderFrameEventSource),
+              (PeriodicEvent initialTime (TimeSpec 2 0) timeOutEventSource),
+              (PeriodicEvent initialTime (TimeSpec 0 50000000) animationTimeOutEventSource)]
+            gameConfig = GameConfig (V2 1000 800) window controlKeysEventSource
+
+        liftIO $ execGameLoop gameLoop gameConfig periodicEvents
 
   GLFW.terminate
 
-mainLoop :: TimeSpec -> Window -> EventSource () -> EventSource () -> EventSource ControlKeys -> EventSource () -> IO ()
-mainLoop pastTime window renderFrameEventSource animationTimeOutEventSource controlKeysEventSource timeOutEventSource = do
-  -- Process the event loop
-  GLFW.pollEvents
-  close <- GLFW.windowShouldClose window
-  unless close do
-    fire controlKeysEventSource =<< getControlKeys window
-    currentTime <- getTime Monotonic
-    let triggerRenderEvent = (currentTime - pastTime > (TimeSpec 0 2000000)) -- 30 FPS
-    when triggerRenderEvent $ fire renderFrameEventSource ()
-    esc <- keyIsPressed window Key'Escape
-    if esc
-      then return ()
-      else mainLoop (if triggerRenderEvent then currentTime else pastTime) window renderFrameEventSource animationTimeOutEventSource controlKeysEventSource timeOutEventSource
-    
-
-type EventSource a = (AddHandler a, a -> IO ())
-
-addHandler :: EventSource a -> AddHandler a
-addHandler = fst
-
-fire :: EventSource a -> a -> IO ()
-fire = snd
-
-setupNetwork :: Window -> GlossR.State -> EventSource() -> EventSource() -> EventSource ControlKeys -> EventSource () -> PlayerTextureMap-> IO EventNetwork
-setupNetwork window glossState renderFrameEventSource animationTimeOutEventSource controlKeysEventSource timeOutEventSource textures = compile $ do
+setupNetwork :: Window -> GlossR.State -> EventSource() -> EventSource() -> EventSource ControlKeys -> EventSource () -> CharacterTextureMap -> IO EventNetwork
+setupNetwork window glossState renderFrameEventSource animationStepEventSource controlKeysEventSource npcTimeOutEventSource textures = compile $ do
     rndmGen <- initStdGen
 
     renderFrameEvent <- fromAddHandler $ addHandler renderFrameEventSource
-    controlKeyEvent <- fromAddHandler (addHandler controlKeysEventSource)
-    timeOutEvent <- fromAddHandler (addHandler timeOutEventSource)
+    animationStepEvent <- fromAddHandler $ addHandler animationStepEventSource
+    controlKeyEvent <- fromAddHandler $ addHandler controlKeysEventSource
+    npcTimeOutEvent <- fromAddHandler $ addHandler npcTimeOutEventSource
 
-    let playerMoveEvent = (\controlKey player -> moveIdlePlayer $ movePlayer $ changeStatus controlKey player) <$> controlKeyEvent
-    playerPositionBehavior <- accumB (Player (V2 0 0) Idle RightDirection 0 One) playerMoveEvent
+    let playerMoveEvent = (\controlKey player -> moveCharacter $ changeStatus controlKey player) <$> controlKeyEvent
+        playerAnimationStepEvent = moveIdleCharacter <$ animationStepEvent
+    playerPositionBehavior <- accumB (Character Soldier (V2 0 0) Idle RightDirection 0 (AnimationState 10 0)) $ unionWith (\_ animate -> animate) playerMoveEvent playerAnimationStepEvent
 
-    (changeDirectionEvent, _) <- mapAccum rndmGen $ uniform <$ timeOutEvent
+    (changeDirectionEvent, _) <- mapAccum rndmGen $ uniform <$ npcTimeOutEvent
     monsterDirectionBehavior <- stepper RightDirection changeDirectionEvent
 
-    let monsterMoveEvent = (\direction monster -> wander (500, 400) 2 direction monster) <$> monsterDirectionBehavior <@ controlKeyEvent
-    monsterPositionBehavior <- accumB (Monster (V2 100 100) (Wander RightDirection)) $ monsterMoveEvent
+    let monsterMoveEvent = (\direction monster -> wander (500, 400) 8 direction monster) <$> monsterDirectionBehavior <@ renderFrameEvent
+        monsterAnimationStepEvent = moveAnyCharacter <$ animationStepEvent
+    monsterPositionBehavior <- accumB (Character Wolf (V2 100 100) Running RightDirection 8 (AnimationState 8 0)) $ unionWith (\_ animate -> animate) monsterMoveEvent monsterAnimationStepEvent
 
     reactimate $ (renderFrame window glossState textures) <$> playerPositionBehavior <*> monsterPositionBehavior <@ renderFrameEvent
 
-getControlKeys :: Window -> IO ControlKeys
-getControlKeys window = do
-  ControlKeys <$> keyIsPressed window Key'Up
-              <*> keyIsPressed window Key'Down
-              <*> keyIsPressed window Key'Left
-              <*> keyIsPressed window Key'Right
-
-
-renderFrame :: Window -> GlossR.State -> PlayerTextureMap -> Player -> Monster -> IO ()
+renderFrame :: Window -> GlossR.State -> CharacterTextureMap -> Character -> Character -> IO ()
 renderFrame window glossState textures p m = do
-  displayPicture (1000, 800) blue glossState 1.0 $ Pictures [renderPlayer textures p, renderMonster m]
+  displayPicture (1000, 800) blue glossState 1.0 $ Pictures [renderCharacter textures p, renderCharacter textures m]
   renderGUI
   -- Render
   -- glClear GL_COLOR_BUFFER_BIT
@@ -157,14 +143,15 @@ renderFrame window glossState textures p m = do
   openGL3RenderDrawData =<< getDrawData
   GLFW.swapBuffers window
 
-renderPlayer :: PlayerTextureMap -> Player -> Picture
-renderPlayer textures (Player (V2 xPos yPos) status dir _ animStage) = do
-  let currentPicture = textures ! dir ! status !! fromEnum animStage
+renderCharacter :: CharacterTextureMap -> Character -> Picture
+renderCharacter textures (Character characterType (V2 xPos yPos) status dir _ animState) = do
+  let currentPicture = textures ! characterType ! dir ! status !! (fromIntegral $ _pictureIndex animState)
   translate xPos yPos currentPicture
 
-renderMonster :: Monster -> Picture
-renderMonster (Monster (V2 xPos yPos) _) = do
-  Color green $ translate xPos yPos $ circleSolid 100
+-- renderMonster :: CharacterTextureMap -> Monster -> Picture
+-- renderMonster textures (Monster (V2 xPos yPos) _) = do
+--   let currentPicture = textures ! Wolf ! dir ! status !! fromEnum animStage
+--   translate xPos yPos currentPicture
 
 renderGUI:: IO ()
 renderGUI = do
@@ -182,11 +169,3 @@ renderGUI = do
     clicking <- button "Clickety Click"
     when clicking $
       putStrLn "Ow!"
-
-keyIsPressed :: Window -> Key -> IO Bool
-keyIsPressed window key = keyStateIsPressed <$> GLFW.getKey window key
-
-keyStateIsPressed :: KeyState -> Bool
-keyStateIsPressed KeyState'Pressed = True
-keyStateIsPressed KeyState'Repeating = True
-keyStateIsPressed _ = False
