@@ -69,12 +69,14 @@ main = do
 
         wolfRunningLeftTextures <- liftIO $ traverse loadBMP $ take 8 $ (\i -> "haskellgame/images/wolf/running/left/" ++ show i ++ ".bmp") <$> [0..]
         wolfRunningRightTextures <- liftIO $ traverse loadBMP $ take 8 $ (\i -> "haskellgame/images/wolf/running/right/" ++ show i ++ ".bmp") <$> [0..]
+        wolfIdleLeftTextures <- liftIO $ traverse loadBMP $ take 8 $ (\i -> "haskellgame/images/wolf/idle/left/" ++ show i ++ ".bmp") <$> [0..]
+        wolfIdleRightTextures <- liftIO $ traverse loadBMP $ take 8 $ (\i -> "haskellgame/images/wolf/idle/right/" ++ show i ++ ".bmp") <$> [0..]
 
         let playerTextureMap = M.fromList [ (RightDirection, M.fromList [(Idle, idleRightTextures), (Running, runningRightTextures)]),
                                             (LeftDirection, M.fromList [(Idle, idleLeftTextures), (Running, runningLeftTextures)])
                                           ]
-            wolfTextureMap = M.fromList [ (RightDirection, M.fromList [(Running, wolfRunningRightTextures)]),
-                                          (LeftDirection, M.fromList [(Running, wolfRunningLeftTextures)]),
+            wolfTextureMap = M.fromList [ (RightDirection, M.fromList [(Idle, wolfIdleRightTextures), (Running, wolfRunningRightTextures)]),
+                                          (LeftDirection, M.fromList [(Idle, wolfIdleLeftTextures), (Running, wolfRunningLeftTextures)]),
                                           (UpDirection, M.fromList [(Running, wolfRunningRightTextures)]),
                                           (DownDirection, M.fromList [(Running, wolfRunningLeftTextures)])
                                         ]
