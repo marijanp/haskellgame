@@ -3,7 +3,7 @@
 
   inputs = {
     flake-parts.url = "github:hercules-ci/flake-parts";
-    haskellNix.url = "github:input-output-hk/haskell.nix/c6b80fe119af19c9c40ffadd41579ff8db675aab";
+    haskellNix.url = "github:input-output-hk/haskell.nix/f70109807eef3fbf1c5880327cb84f193e821b48";
     nixpkgs.follows = "haskellNix/nixpkgs-unstable";
     treefmt-flake.url = "github:srid/treefmt-flake";
   };
@@ -25,7 +25,7 @@
             (final: prev: {
               ${projectName} = final.haskell-nix.cabalProject {
                 src = ./.;
-                compiler-nix-name = "ghc923";
+                compiler-nix-name = "ghc924";
                 shell.tools = {
                   cabal = { };
                   hlint = { };
